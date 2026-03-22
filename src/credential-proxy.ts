@@ -56,9 +56,13 @@ export function startCredentialProxy(
 
   // Read full .env to get model override (supports both variable names)
   const fullEnv = readFullEnvFile();
-  const modelOverride = fullEnv.ANTHROPIC_SMALL_FAST_MODEL || fullEnv.CLAUDE_CODE_MODEL;
+  const modelOverride =
+    fullEnv.ANTHROPIC_SMALL_FAST_MODEL || fullEnv.CLAUDE_CODE_MODEL;
   if (modelOverride) {
-    logger.info({ model: modelOverride }, 'Using model from ANTHROPIC_SMALL_FAST_MODEL/CLAUDE_CODE_MODEL');
+    logger.info(
+      { model: modelOverride },
+      'Using model from ANTHROPIC_SMALL_FAST_MODEL/CLAUDE_CODE_MODEL',
+    );
   }
 
   const authMode: AuthMode = secrets.ANTHROPIC_API_KEY ? 'api-key' : 'oauth';
@@ -73,7 +77,10 @@ export function startCredentialProxy(
 
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
-      logger.info({ url: req.url, method: req.method }, 'Credential proxy request');
+      logger.info(
+        { url: req.url, method: req.method },
+        'Credential proxy request',
+      );
       const chunks: Buffer[] = [];
       req.on('data', (c) => chunks.push(c));
       req.on('end', () => {
@@ -112,17 +119,29 @@ export function startCredentialProxy(
         const urlPath = req.url || '';
         if (modelOverride) {
           logger.info({ urlPath, modelOverride }, 'Checking model override');
-          if (urlPath.includes('/v1/messages') || urlPath.includes('/v1/chat/completions')) {
+          if (
+            urlPath.includes('/v1/messages') ||
+            urlPath.includes('/v1/chat/completions')
+          ) {
             try {
               const parsedBody = JSON.parse(body.toString());
-              logger.info({ originalModel: parsedBody.model, newModel: modelOverride }, 'Applying model override');
+              logger.info(
+                { originalModel: parsedBody.model, newModel: modelOverride },
+                'Applying model override',
+              );
               parsedBody.model = modelOverride;
               finalBody = Buffer.from(JSON.stringify(parsedBody));
               // Update content-length header
               headers['content-length'] = finalBody.length;
-              logger.info({ model: parsedBody.model }, 'Forced model in proxy via ANTHROPIC_SMALL_FAST_MODEL');
+              logger.info(
+                { model: parsedBody.model },
+                'Forced model in proxy via ANTHROPIC_SMALL_FAST_MODEL',
+              );
             } catch (err) {
-              logger.warn({ err }, 'Failed to parse request body for model override');
+              logger.warn(
+                { err },
+                'Failed to parse request body for model override',
+              );
             }
           }
         }

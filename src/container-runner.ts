@@ -130,7 +130,8 @@ function buildVolumeMounts(
         {
           env: {
             // Default model for all groups
-            CLAUDE_CODE_MODEL: process.env.CLAUDE_CODE_MODEL || 'claude-haiku-4-5-20251001',
+            CLAUDE_CODE_MODEL:
+              process.env.CLAUDE_CODE_MODEL || 'claude-haiku-4-5-20251001',
             // Enable agent swarms (subagent orchestration)
             // https://code.claude.com/docs/en/agent-teams#orchestrate-teams-of-claude-code-sessions
             CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
