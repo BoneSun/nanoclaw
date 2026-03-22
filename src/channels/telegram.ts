@@ -97,11 +97,17 @@ export class TelegramChannel implements Channel {
               options.body = init.body;
             }
 
-            logger.info({ url: url.slice(0, 100) + '...' }, 'Telegram API request');
+            logger.info(
+              { url: url.slice(0, 100) + '...' },
+              'Telegram API request',
+            );
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 60000);
             try {
-              const res = await fetch(url, { ...options, signal: controller.signal });
+              const res = await fetch(url, {
+                ...options,
+                signal: controller.signal,
+              });
               clearTimeout(timeoutId);
               logger.info(
                 { url: url.slice(0, 100) + '...', status: res.status },

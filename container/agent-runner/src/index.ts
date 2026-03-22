@@ -413,6 +413,8 @@ async function runQuery(
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       settingSources: ['project', 'user'],
+      // Default to haiku for fast responses
+      model: process.env.CLAUDE_CODE_MODEL || 'haiku',
       mcpServers: {
         nanoclaw: {
           command: 'node',

@@ -366,7 +366,10 @@ async function startMessageLoop(): Promise<void> {
       );
 
       if (messages.length > 0) {
-        logger.info({ count: messages.length, jids, lastTimestamp }, 'New messages');
+        logger.info(
+          { count: messages.length, jids, lastTimestamp },
+          'New messages',
+        );
 
         // Advance the "seen" cursor for all messages immediately
         lastTimestamp = newTimestamp;
@@ -384,7 +387,14 @@ async function startMessageLoop(): Promise<void> {
         }
 
         for (const [chatJid, groupMessages] of messagesByGroup) {
-          logger.info({ chatJid, groupMessagesCount: groupMessages.length, lastAgentTs: lastAgentTimestamp[chatJid] || '' }, 'Processing group messages');
+          logger.info(
+            {
+              chatJid,
+              groupMessagesCount: groupMessages.length,
+              lastAgentTs: lastAgentTimestamp[chatJid] || '',
+            },
+            'Processing group messages',
+          );
           const group = registeredGroups[chatJid];
           if (!group) {
             logger.warn({ chatJid }, 'No group found in registeredGroups');
@@ -427,7 +437,11 @@ async function startMessageLoop(): Promise<void> {
 
           if (queue.sendMessage(chatJid, formatted)) {
             logger.info(
-              { chatJid, count: messagesToSend.length, hasTrigger: !needsTrigger },
+              {
+                chatJid,
+                count: messagesToSend.length,
+                hasTrigger: !needsTrigger,
+              },
               'Piped messages to active container',
             );
             lastAgentTimestamp[chatJid] =
@@ -459,7 +473,11 @@ async function startMessageLoop(): Promise<void> {
 function recoverPendingMessages(): void {
   for (const [chatJid, group] of Object.entries(registeredGroups)) {
     const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
-    const pending = getMessagesSince(chatJid, sinceTimestamp, `@${ASSISTANT_NAME}`);
+    const pending = getMessagesSince(
+      chatJid,
+      sinceTimestamp,
+      `@${ASSISTANT_NAME}`,
+    );
     if (pending.length > 0) {
       logger.info(
         { group: group.name, pendingCount: pending.length },
@@ -587,7 +605,10 @@ async function main(): Promise<void> {
   for (const channelName of getRegisteredChannelNames()) {
     const factory = getChannelFactory(channelName);
     if (!factory) {
-      logger.warn({ channel: channelName }, 'Channel factory not found in registry');
+      logger.warn(
+        { channel: channelName },
+        'Channel factory not found in registry',
+      );
       continue;
     }
     const channel = factory(channelOpts);
@@ -659,7 +680,9 @@ async function main(): Promise<void> {
   });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
-  logger.info(`Starting message loop with ${channels.length} channels connected`);
+  logger.info(
+    `Starting message loop with ${channels.length} channels connected`,
+  );
   startMessageLoop().catch((err) => {
     logger.fatal({ err }, 'Message loop crashed unexpectedly');
     process.exit(1);
