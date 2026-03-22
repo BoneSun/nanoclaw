@@ -163,7 +163,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const missedMessages = getMessagesSince(
     chatJid,
     sinceTimestamp,
-    ASSISTANT_NAME,
+    `@${ASSISTANT_NAME}`,
   );
 
   if (missedMessages.length === 0) return true;
@@ -346,11 +346,13 @@ async function runAgent(
 }
 
 async function startMessageLoop(): Promise<void> {
+  logger.info('startMessageLoop: entering');
   if (messageLoopRunning) {
     logger.debug('Message loop already running, skipping duplicate start');
     return;
   }
   messageLoopRunning = true;
+  logger.info('startMessageLoop: messageLoopRunning set to true');
 
   logger.info(`NanoClaw running (trigger: @${ASSISTANT_NAME})`);
 
@@ -360,11 +362,11 @@ async function startMessageLoop(): Promise<void> {
       const { messages, newTimestamp } = getNewMessages(
         jids,
         lastTimestamp,
-        ASSISTANT_NAME,
+        `@${ASSISTANT_NAME}`,
       );
 
       if (messages.length > 0) {
-        logger.info({ count: messages.length }, 'New messages');
+        logger.info({ count: messages.length, jids, lastTimestamp }, 'New messages');
 
         // Advance the "seen" cursor for all messages immediately
         lastTimestamp = newTimestamp;
@@ -382,8 +384,12 @@ async function startMessageLoop(): Promise<void> {
         }
 
         for (const [chatJid, groupMessages] of messagesByGroup) {
+          logger.info({ chatJid, groupMessagesCount: groupMessages.length, lastAgentTs: lastAgentTimestamp[chatJid] || '' }, 'Processing group messages');
           const group = registeredGroups[chatJid];
-          if (!group) continue;
+          if (!group) {
+            logger.warn({ chatJid }, 'No group found in registeredGroups');
+            continue;
+          }
 
           const channel = findChannel(channels, chatJid);
           if (!channel) {
@@ -413,15 +419,15 @@ async function startMessageLoop(): Promise<void> {
           const allPending = getMessagesSince(
             chatJid,
             lastAgentTimestamp[chatJid] || '',
-            ASSISTANT_NAME,
+            `@${ASSISTANT_NAME}`,
           );
           const messagesToSend =
             allPending.length > 0 ? allPending : groupMessages;
           const formatted = formatMessages(messagesToSend, TIMEZONE);
 
           if (queue.sendMessage(chatJid, formatted)) {
-            logger.debug(
-              { chatJid, count: messagesToSend.length },
+            logger.info(
+              { chatJid, count: messagesToSend.length, hasTrigger: !needsTrigger },
               'Piped messages to active container',
             );
             lastAgentTimestamp[chatJid] =
@@ -453,7 +459,7 @@ async function startMessageLoop(): Promise<void> {
 function recoverPendingMessages(): void {
   for (const [chatJid, group] of Object.entries(registeredGroups)) {
     const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
-    const pending = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
+    const pending = getMessagesSince(chatJid, sinceTimestamp, `@${ASSISTANT_NAME}`);
     if (pending.length > 0) {
       logger.info(
         { group: group.name, pendingCount: pending.length },
@@ -579,7 +585,11 @@ async function main(): Promise<void> {
   // Each channel self-registers via the barrel import above.
   // Factories return null when credentials are missing, so unconfigured channels are skipped.
   for (const channelName of getRegisteredChannelNames()) {
-    const factory = getChannelFactory(channelName)!;
+    const factory = getChannelFactory(channelName);
+    if (!factory) {
+      logger.warn({ channel: channelName }, 'Channel factory not found in registry');
+      continue;
+    }
     const channel = factory(channelOpts);
     if (!channel) {
       logger.warn(
@@ -649,6 +659,7 @@ async function main(): Promise<void> {
   });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
+  logger.info(`Starting message loop with ${channels.length} channels connected`);
   startMessageLoop().catch((err) => {
     logger.fatal({ err }, 'Message loop crashed unexpectedly');
     process.exit(1);

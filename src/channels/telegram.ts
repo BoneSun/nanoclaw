@@ -1,5 +1,6 @@
 import https from 'https';
 import { Api, Bot } from 'grammy';
+import fetch from 'node-fetch';
 
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
@@ -47,6 +48,7 @@ export class TelegramChannel implements Channel {
   private bot: Bot | null = null;
   private opts: TelegramChannelOpts;
   private botToken: string;
+  private connectResolve: (() => void) | null = null;
 
   constructor(botToken: string, opts: TelegramChannelOpts) {
     this.botToken = botToken;
@@ -54,11 +56,76 @@ export class TelegramChannel implements Channel {
   }
 
   async connect(): Promise<void> {
+    // Configure proxy for Telegram API if needed
+    let agent;
+    const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+    logger.info({ proxy: proxyUrl }, 'Telegram proxy check');
+
+    if (proxyUrl) {
+      // Use https-proxy-agent for HTTPS (Telegram API is HTTPS)
+      // Import from './index.js' to work with both CJS and ESM
+      const proxyAgent = await import('https-proxy-agent');
+      const { HttpsProxyAgent } = proxyAgent as any;
+      agent = new HttpsProxyAgent(proxyUrl);
+      logger.info('Telegram using https-proxy-agent');
+    } else {
+      agent = https.globalAgent;
+    }
+
+    logger.info('Creating Bot instance with proxy agent...');
+
+    // Create a promise that resolves when the bot connects
+    const connectPromise = new Promise<void>((resolve) => {
+      this.connectResolve = resolve;
+    });
+
+    // Set custom fetch function that uses the proxy agent
     this.bot = new Bot(this.botToken, {
       client: {
-        baseFetchConfig: { agent: https.globalAgent, compress: true },
+        fetch: async (url: any, init?: any) => {
+          try {
+            // Build fetch options explicitly, ignoring signal from init
+            // (it's not a valid AbortSignal instance)
+            const options: any = {
+              agent,
+              headers: init?.headers || { 'Content-Type': 'application/json' },
+              method: init?.method || 'GET',
+            };
+
+            // Handle body for POST/PUT/PATCH
+            if (init?.body) {
+              options.body = init.body;
+            }
+
+            logger.info({ url: url.slice(0, 100) + '...' }, 'Telegram API request');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+            try {
+              const res = await fetch(url, { ...options, signal: controller.signal });
+              clearTimeout(timeoutId);
+              logger.info(
+                { url: url.slice(0, 100) + '...', status: res.status },
+                'Telegram API response',
+              );
+              return res;
+            } catch (err) {
+              clearTimeout(timeoutId);
+              throw err;
+            }
+          } catch (err) {
+            const errStr = err instanceof Error ? err.message : String(err);
+            const cause = (err as any).cause;
+            logger.error(
+              { err: errStr, errCause: cause?.message || cause, url },
+              'Telegram API request failed',
+            );
+            throw err;
+          }
+        },
       },
     });
+
+    logger.info('Bot instance created, starting polling...');
 
     // Command to get chat ID (useful for registration)
     this.bot.command('chatid', (ctx) => {
@@ -219,22 +286,24 @@ export class TelegramChannel implements Channel {
       logger.error({ err: err.message }, 'Telegram bot error');
     });
 
-    // Start polling — returns a Promise that resolves when started
-    return new Promise<void>((resolve) => {
-      this.bot!.start({
-        onStart: (botInfo) => {
-          logger.info(
-            { username: botInfo.username, id: botInfo.id },
-            'Telegram bot connected',
-          );
-          console.log(`\n  Telegram bot: @${botInfo.username}`);
-          console.log(
-            `  Send /chatid to the bot to get a chat's registration ID\n`,
-          );
-          resolve();
-        },
-      });
+    // Start polling — Note: Grammy's bot.catch() handles all errors
+    // We use a promise wrapper to make connect() awaitable
+    this.bot!.start({
+      onStart: (botInfo) => {
+        logger.info(
+          { username: botInfo.username, id: botInfo.id },
+          'Telegram bot connected',
+        );
+        // Resolve the connect promise so main() can continue
+        if (this.connectResolve) {
+          this.connectResolve();
+          this.connectResolve = null;
+        }
+      },
     });
+
+    // Wait for the bot to connect successfully
+    return connectPromise;
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
